@@ -23,5 +23,5 @@ jobs:
       - name: build_image
         run: |
                 docker build -t demonodeapp .
-                docker tag demonodeapp demonodejsapp:v1
+                docker tag demonodeapp webappaksregistry.azurecr.io/demonodejsapp:v1
                 docker push webappaksregistry.azurecr.io/demonodejsapp:v1
