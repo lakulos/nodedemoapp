@@ -22,7 +22,7 @@ jobs:
         with:
             username: ${{ secrets.ACR_USERNAME }}
             password: ${{ secrets.ACR_PASS }}
-            login-server: dockercr01.azurecr.io
+            login-server: webappaksregistry.azurecr.io
 
       - name: build_image
         run: |
