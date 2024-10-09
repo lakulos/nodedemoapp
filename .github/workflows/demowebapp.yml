@@ -16,12 +16,16 @@ jobs:
       - name: Azure Login
         uses: Azure/login@v2.2.0
         with:
-            client-id: c6137eca-c66e-4411-bfb5-f52ac85091a6
-            tenant-id: 44e0fe4b-405f-4678-bcb4-a6063b67f6b3
-            subscription-id: 7f112840-74e8-45d2-8eb8-4d4f4248f2ca
-            enable-AzPSSession: true
-            audience: api://AzureADTokenExchange
-            auth-type: SERVICE_PRINCIPAL  
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure CLI script
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az account show  
           
       - name: Azure Container Registry Login
         uses: Azure/docker-login@v1
