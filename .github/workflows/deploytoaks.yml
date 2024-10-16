@@ -1,4 +1,4 @@
-name: build_ACR
+name: build_IMG
 
 on: workflow_dispatch
 
