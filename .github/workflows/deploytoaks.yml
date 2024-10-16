@@ -22,13 +22,13 @@ jobs:
         with:
             username: ${{ secrets.ACR_USERNAME }}
             password: ${{ secrets.ACR_PASS }}
-            login-server: ${{ secrets.ACR }}.azurecr.io
+            login-server: ${{ secrets.ACR_USERNAME }}.azurecr.io
 
       - name: build_image
         run: |
                 docker build -t demonodeapp .
-                docker tag demonodeapp ${{ secrets.ACR }}.azurecr.io/demonodejsapp:${{ github.sha }}
-                docker push ${{ secrets.ACR }}.azurecr.io/demonodejsapp:${{ github.sha }}
+                docker tag demonodeapp ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}
+                docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}
 
 
     deploy-to-AKS:
@@ -50,5 +50,5 @@ jobs:
 
       - name: Deploy to AKS
         run: |
-                sed -i 's|image: .*|image: '"${{ secrets.ACR }}.azurecr.io/demonodejsapp:${{ github.sha }}"'|' mavendeploy.yaml
+                sed -i 's|image: .*|image: '"${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}"'|' mavendeploy.yaml
                 kubectl apply -f ingress.yml
