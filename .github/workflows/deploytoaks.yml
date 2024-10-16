@@ -34,15 +34,14 @@ jobs:
       - name: Check if image exists in ACR
         id: check-image
         run: |
-          IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '${{ env.DOCKER_HASH }}')]" -o tsv)
-          if [ -z "$IMAGE_EXISTS" ]; then
-            echo "Image does not exist. Proceeding with build and push."
-            echo "::set-output name=IMAGE_EXISTS::false"
-          else
-            echo "Image already exists with the same hash. Skipping build and push."
-            echo "::set-output name=IMAGE_EXISTS::true"
-        shell: bash
-
+            DOCKER_HASH=$(shasum -a 256 Dockerfile | cut -d ' ' -f 1)
+            IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '${DOCKER_HASH}')]" -o tsv)
+            if [ -z "$IMAGE_EXISTS" ]; then
+              echo "Image does not exist. Proceeding with build and push."
+              echo "::set-output name=IMAGE_EXISTS::false"
+            else
+              echo "Image already exists with the same hash. Skipping build and push."
+              echo "::set-output name=IMAGE_EXISTS::true"
 
 
       - name: build_image
