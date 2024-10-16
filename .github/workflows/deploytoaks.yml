@@ -1,4 +1,4 @@
-name: docker_build_ACR
+name: build_ACR
 
 on: workflow_dispatch
 
