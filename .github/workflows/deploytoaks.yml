@@ -23,25 +23,17 @@ jobs:
             username: ${{ secrets.ACR_USERNAME }}
             password: ${{ secrets.ACR_PASS }}
             login-server: ${{ secrets.ACR_USERNAME }}.azurecr.io
-
-      - name: Compute Docker hash
-        id: docker-hash
-        run: |
-              DOCKER_HASH=$(shasum -a 256 Dockerfile | cut -d ' ' -f 1)
-              echo "Docker hash: $DOCKER_HASH"
-              echo "DOCKER_HASH=$DOCKER_HASH" >> $GITHUB_ENV
-
-       
+        
       - name: Check if image exists in ACR
         id: check-image
         run: |
-            IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '${{ env.DOCKER_HASH }}')]" -o tsv)
-            if [ -z "$IMAGE_EXISTS" ]; then
-              echo "Image does not exist. Proceeding with build and push."
-              echo "::set-output name=IMAGE_EXISTS::false"
-            else
-              echo "Image already exists with the same hash. Skipping build and push."
-              echo "::set-output name=IMAGE_EXISTS::true"
+          IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '$DOCKER_HASH')]" -o tsv)
+          if [ -z "$IMAGE_EXISTS" ]; then
+            echo "Image does not exist. Proceeding with build and push."
+            echo "::set-output name=IMAGE_EXISTS::false"
+          else
+            echo "Image already exists with the same hash. Skipping build and push."
+            echo "::set-output name=IMAGE_EXISTS::true"
 
 
       - name: build_image
