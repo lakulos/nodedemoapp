@@ -1,6 +1,6 @@
 name: build_and_deploy
 
-on: push
+on: workflow_dispatch
 
 permissions:
   id-token: write
@@ -41,19 +41,24 @@ jobs:
         echo "Image Digest: $IMAGE_DIGEST"
         echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_ENV
 
-    - name: Check if image exists in ACR
+    - name: Check if repository exists and handle missing repo
       id: check-acr
       run: |
-        EXISTING_DIGEST=$(az acr repository show-manifests --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?digest=='${{ env.IMAGE_DIGEST }}'].digest" -o tsv)
-        echo "EXISTING_DIGEST=$EXISTING_DIGEST" >> $GITHUB_ENV
+        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
+        
+        # Check if the repository exists, if it doesn't, continue without error
+        EXISTING_REPO=$(az acr repository show --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp || echo "")
 
-    - name: Push image to ACR if changed
-      if: ${{ env.EXISTING_DIGEST == '' }}
+        if [ -z "$EXISTING_REPO" ]; then
+          echo "Repository demonodejsapp does not exist. It will be created upon pushing the image."
+        fi
+
+    - name: Push image to ACR
       run: |
         IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
         IMAGE_TAG=${{ github.sha }}
         
-        # Push the image only if the digest is new
+        # Push the image, which will recreate the repository if needed
         docker push $IMAGE_NAME:$IMAGE_TAG
 
   deploy-to-AKS:
