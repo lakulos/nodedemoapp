@@ -24,32 +24,29 @@ jobs:
             password: ${{ secrets.ACR_PASS }}
             login-server: ${{ secrets.ACR_USERNAME }}.azurecr.io
         
-      - name: Calculate Dockerfile hash
-        id: calculate-hash
+      - name: Get Dockerfile hash
         run: |
-          DOCKER_HASH=$(shasum -a 256 Dockerfile | cut -d ' ' -f 1)
+          DOCKER_HASH=$(cat Dockerfile | sha256sum | cut -d' ' -f1)
           echo "Dockerfile hash: $DOCKER_HASH"
           echo "::set-output name=DOCKER_HASH::$DOCKER_HASH"
 
       - name: Check if image exists in ACR
         id: check-image
         run: |
-            DOCKER_HASH=$(shasum -a 256 Dockerfile | cut -d ' ' -f 1)
-            IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '${DOCKER_HASH}')]" -o tsv)
-            if [ -z "$IMAGE_EXISTS" ]; then
-              echo "Image does not exist. Proceeding with build and push."
-              echo "::set-output name=IMAGE_EXISTS::false"
-            else
-              echo "Image already exists with the same hash. Skipping build and push."
-              echo "::set-output name=IMAGE_EXISTS::true"
+          IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '$DOCKER_HASH')]" -o tsv)
+          if [ -z "$IMAGE_EXISTS" ]; then
+            echo "Image does not exist. Proceeding with build and push."
+            echo "::set-output name=IMAGE_EXISTS::false"
+          else
+            echo "Image already exists with the same content. Skipping build and push."
+            echo "::set-output name=IMAGE_EXISTS::true"
 
-
-      - name: build_image
+      - name: Build and push Docker image
         if: steps.check-image.outputs.IMAGE_EXISTS == 'false'
         run: |
-                docker build -t demonodeapp .
-                docker tag demonodeapp ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}
-                docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}
+          docker build -t demonodeapp .
+          docker tag demonodeapp ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ steps.check-image.outputs.DOCKER_HASH }}
+          docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ steps.check-image.outputs.DOCKER_HASH }}
 
 
     deploy-to-AKS:
@@ -71,6 +68,6 @@ jobs:
 
       - name: Deploy to AKS
         run: |
-                sed -i 's|image: .*|image: '"${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}"'|' mavendeploy.yml
+                sed -i 's|image: .*|image: '"${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ steps.check-image.outputs.DOCKER_HASH }}"'|' mavendeploy.yml
                 kubectl apply -f mavendeploy.yml
                 kubectl apply -f ingress.yml
