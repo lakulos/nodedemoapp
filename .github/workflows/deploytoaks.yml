@@ -1,6 +1,6 @@
 name: build_and_deploy
 
-on: push
+on: workflow_dispatch
 
 permissions:
   id-token: write
@@ -26,44 +26,49 @@ jobs:
         docker buildx create --use
         docker buildx inspect --bootstrap
 
-    - name: Build image with buildx
+    # Step 1: Compute Digest of Dockerfile or the whole Build Context
+    - name: Compute Dockerfile Digest
+      id: compute-digest
+      run: |
+        # Compute a hash for the Dockerfile and any other files relevant to the build
+        DOCKERFILE_DIGEST=$(tar -c Dockerfile .dockerignore | sha256sum | cut -d' ' -f1)
+
+        echo "DOCKERFILE_DIGEST=${DOCKERFILE_DIGEST}" >> $GITHUB_ENV
+        echo "Dockerfile Digest: $DOCKERFILE_DIGEST"
+
+    # Step 2: Check if an image with this digest already exists in ACR
+    - name: Check for Existing Image in ACR
+      id: check-image
+      run: |
+        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
+        EXISTING_IMAGE=$(az acr repository show-manifests --name ${{ secrets.ACR_USERNAME }} \
+          --repository demonodejsapp --query "[?contains(@.digest, '${{ env.DOCKERFILE_DIGEST }}')]" -o tsv)
+        
+        if [ -n "$EXISTING_IMAGE" ]; then
+          echo "Image already exists with digest ${{ env.DOCKERFILE_DIGEST }}. Skipping build and push."
+          echo "EXISTING_IMAGE=true" >> $GITHUB_ENV
+        else
+          echo "No existing image found with digest ${{ env.DOCKERFILE_DIGEST }}. Proceeding with build."
+          echo "EXISTING_IMAGE=false" >> $GITHUB_ENV
+
+    # Step 3: Build and push only if image does not already exist
+    - name: Build and Push Image
+      if: env.EXISTING_IMAGE == 'false'
       run: |
         IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
         IMAGE_TAG=${{ github.sha }}
 
-        # Build the image but do not push yet
+        # Build the image
         docker buildx build --platform linux/amd64 -t $IMAGE_NAME:$IMAGE_TAG --load .
 
-    - name: Get image digest
-      run: |
-        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
-        IMAGE_TAG=${{ github.sha }}
-
-        # Extract the image digest after the build
-        IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME:$IMAGE_TAG | cut -d'@' -f2)
-
-        echo "Image Digest: $IMAGE_DIGEST"
-        echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_ENV
-
-    - name: Check if repository exists and handle missing repo
-      id: check-acr
-      run: |
-        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
-        
-        # Check if the repository exists, if it doesn't, continue without error
-        EXISTING_REPO=$(az acr repository show --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp || echo "")
-
-        if [ -z "$EXISTING_REPO" ]; then
-          echo "Repository demonodejsapp does not exist. It will be created upon pushing the image."
-        fi
-
-    - name: Push image to ACR
-      run: |
-        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
-        IMAGE_TAG=${{ github.sha }}
-        
-        # Push the image, which will recreate the repository if needed
+        # Push the image with the calculated digest as a tag
         docker push $IMAGE_NAME:$IMAGE_TAG
+
+    - name: Skip Push Message
+      if: env.EXISTING_IMAGE == 'true'
+      run: |
+        echo "Skipping image build and push as the image already exists in ACR."
+
 
   deploy-to-AKS:
     runs-on: ubuntu-latest
