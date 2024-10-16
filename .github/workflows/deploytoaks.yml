@@ -1,6 +1,6 @@
 name: build_and_deploy
 
-on: workflow_dispatch
+on: push
 
 permissions:
   id-token: write
