@@ -24,7 +24,6 @@ jobs:
             password: ${{ secrets.ACR_PASS }}
             login-server: ${{ secrets.ACR_USERNAME }}.azurecr.io
 
-
       # Compute hash of the Dockerfile and context directory
       - name: Compute Docker hash
         id: docker-hash
@@ -34,19 +33,19 @@ jobs:
           echo "Docker hash: $DOCKER_HASH"
           echo "::set-output name=DOCKER_HASH::$DOCKER_HASH"
 
-      # Check if an image with this hash already exists in ACR
+      # Check if an image with this hash already exists in ACR (using the new command)
       - name: Check if image exists in ACR
         id: check-image
         run: |
-          IMAGE_EXISTS=$(az acr repository show-manifests --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?digest=='${{ steps.docker-hash.outputs.DOCKER_HASH }}'].digest" -o tsv)
+          IMAGE_EXISTS=$(az acr manifest list-metadata --name ${{ secrets.ACR_USERNAME }}/demonodejsapp --query "[?digest=='${{ steps.docker-hash.outputs.DOCKER_HASH }}'].digest" -o tsv)
           if [ -z "$IMAGE_EXISTS" ]; then
             echo "Image does not exist. Proceeding with build and push."
             echo "::set-output name=IMAGE_EXISTS::false"
           else
             echo "Image already exists with the same hash. Skipping build and push."
             echo "::set-output name=IMAGE_EXISTS::true"
-        continue-on-error: true  # Proceed even if image check fails
-        
+        continue-on-error: true
+
 
       - name: build_image
         if: steps.check-image.outputs.IMAGE_EXISTS == 'false'
