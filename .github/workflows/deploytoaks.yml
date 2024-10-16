@@ -1,73 +1,66 @@
-name: build_IMG
+name: build_and_deploy
 
-on: push
+on: workflow_dispatch
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-    build-to-acr:
-      runs-on: ubuntu-latest
-      steps:
-      - name: Checkout
-        uses: actions/checkout@v4.1.7
+  build-to-acr:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.1.7
 
-      - uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-                  
-      - name: Azure Container Registry Login
-        uses: Azure/docker-login@v1
-        with:
-            username: ${{ secrets.ACR_USERNAME }}
-            password: ${{ secrets.ACR_PASS }}
-            login-server: ${{ secrets.ACR_USERNAME }}.azurecr.io
-        
-      - name: Get Dockerfile hash
-        run: |
-          DOCKER_HASH=$(cat Dockerfile | sha256sum | cut -d' ' -f1)
-          echo "Dockerfile hash: $DOCKER_HASH"
-          echo "::set-output name=DOCKER_HASH::$DOCKER_HASH"
+    - uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Check if image exists in ACR
-        id: check-image
-        run: |
-          IMAGE_EXISTS=$(az acr repository show-tags --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?contains(@, '$DOCKER_HASH')]" -o tsv)
-          if [ -z "$IMAGE_EXISTS" ]; then
-            echo "Image does not exist. Proceeding with build and push."
-            echo "::set-output name=IMAGE_EXISTS::false"
-          else
-            echo "Image already exists with the same content. Skipping build and push."
-            echo "::set-output name=IMAGE_EXISTS::true"
+    - name: Set up Docker Buildx
+      run: |
+        docker buildx create --use
+        docker buildx inspect --bootstrap
 
-      - name: Build and push Docker image
-        if: steps.check-image.outputs.IMAGE_EXISTS == 'false'
-        run: |
-          docker build -t demonodeapp .
-          docker tag demonodeapp ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ steps.check-image.outputs.DOCKER_HASH }}
-          docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ steps.check-image.outputs.DOCKER_HASH }}
+    - name: Build and push image only if changed
+      run: |
+        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
+        IMAGE_TAG=${{ github.sha }}
 
+        # Build the image and export the digest to a file
+        docker buildx build --platform linux/amd64 -t $IMAGE_NAME:$IMAGE_TAG . --output "type=digest"
 
-    deploy-to-AKS:
-      runs-on: ubuntu-latest
-      needs: 
-            build-to-acr
-      steps:
-      - name: Checkout
-        uses: actions/checkout@v4.1.7
+        # Extract the digest from the output
+        IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME:$IMAGE_TAG | cut -d'@' -f2)
 
-      - uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+        # Check if the image with the same digest exists in ACR
+        EXISTING_DIGEST=$(az acr repository show-manifests --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?digest=='$IMAGE_DIGEST'].digest" -o tsv)
 
+        if [ "$IMAGE_DIGEST" != "$EXISTING_DIGEST" ]; then
+          # Only push the image if the digest doesn't already exist
+          docker push $IMAGE_NAME:$IMAGE_TAG
+        else
+          echo "Image already exists in ACR with the same digest, skipping push."
+        fi
 
-      - name: Set up AKS credentials
-        run: |
-                az aks get-credentials --resource-group ${{ secrets.RG }} --name ${{ secrets.AKS }}
+  deploy-to-AKS:
+    runs-on: ubuntu-latest
+    needs: 
+          build-to-acr
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4.1.7
 
-      - name: Deploy to AKS
-        run: |
-                sed -i 's|image: .*|image: '"${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ steps.check-image.outputs.DOCKER_HASH }}"'|' mavendeploy.yml
-                kubectl apply -f mavendeploy.yml
-                kubectl apply -f ingress.yml
+    - uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set up AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ secrets.RG }} --name ${{ secrets.AKS }}
+
+    - name: Deploy to AKS
+      run: |
+        sed -i 's|image: .*|image: '"${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}"'|' mavendeploy.yml
+        kubectl apply -f mavendeploy.yml
+        kubectl apply -f ingress.yml
