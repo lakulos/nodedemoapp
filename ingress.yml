@@ -13,7 +13,7 @@ spec:
         path: "/"
         backend:
           service:
-            name: demoapp-svc
+            name: demoapps-svc
             port:
               number: 80
   
