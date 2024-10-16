@@ -4,7 +4,6 @@ metadata:
   name: demoapp-ingress
 spec:
   ingressClassName: "azure-application-gateway"
-spec:
   rules:
   - host: "demoapp.techade.org"
     http:
