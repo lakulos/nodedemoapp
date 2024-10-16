@@ -42,6 +42,7 @@ jobs:
           else
             echo "Image already exists with the same hash. Skipping build and push."
             echo "::set-output name=IMAGE_EXISTS::true"
+        shell: bash
 
 
       - name: build_image
