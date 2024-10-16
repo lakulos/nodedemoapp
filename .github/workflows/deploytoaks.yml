@@ -1,6 +1,6 @@
 name: build_and_deploy
 
-on: push
+on: workflow_dispatch
 
 permissions:
   id-token: write
@@ -22,31 +22,43 @@ jobs:
         docker buildx create --use
         docker buildx inspect --bootstrap
 
-    - name: Build and push image only if changed
+    - name: Build image with buildx
       run: |
         IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
         IMAGE_TAG=${{ github.sha }}
 
-        # Build the image and export the digest to a file
-        docker buildx build --platform linux/amd64 -t $IMAGE_NAME:$IMAGE_TAG . --output "type=digest"
+        # Build the image but do not push yet
+        docker buildx build --platform linux/amd64 -t $IMAGE_NAME:$IMAGE_TAG --load .
 
-        # Extract the digest from the output
+    - name: Get image digest
+      run: |
+        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
+        IMAGE_TAG=${{ github.sha }}
+
+        # Extract the image digest after the build
         IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME:$IMAGE_TAG | cut -d'@' -f2)
 
-        # Check if the image with the same digest exists in ACR
-        EXISTING_DIGEST=$(az acr repository show-manifests --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?digest=='$IMAGE_DIGEST'].digest" -o tsv)
+        echo "Image Digest: $IMAGE_DIGEST"
+        echo "IMAGE_DIGEST=$IMAGE_DIGEST" >> $GITHUB_ENV
 
-        if [ "$IMAGE_DIGEST" != "$EXISTING_DIGEST" ]; then
-          # Only push the image if the digest doesn't already exist
-          docker push $IMAGE_NAME:$IMAGE_TAG
-        else
-          echo "Image already exists in ACR with the same digest, skipping push."
-        fi
+    - name: Check if image exists in ACR
+      id: check-acr
+      run: |
+        EXISTING_DIGEST=$(az acr repository show-manifests --name ${{ secrets.ACR_USERNAME }} --repository demonodejsapp --query "[?digest=='${{ env.IMAGE_DIGEST }}'].digest" -o tsv)
+        echo "EXISTING_DIGEST=$EXISTING_DIGEST" >> $GITHUB_ENV
+
+    - name: Push image to ACR if changed
+      if: ${{ env.EXISTING_DIGEST == '' }}
+      run: |
+        IMAGE_NAME=${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp
+        IMAGE_TAG=${{ github.sha }}
+        
+        # Push the image only if the digest is new
+        docker push $IMAGE_NAME:$IMAGE_TAG
 
   deploy-to-AKS:
     runs-on: ubuntu-latest
-    needs: 
-          build-to-acr
+    needs: build-to-acr
     steps:
     - name: Checkout
       uses: actions/checkout@v4.1.7
