@@ -51,4 +51,5 @@ jobs:
       - name: Deploy to AKS
         run: |
                 sed -i 's|image: .*|image: '"${{ secrets.ACR_USERNAME }}.azurecr.io/demonodejsapp:${{ github.sha }}"'|' mavendeploy.yml
+                kubectl apply -f mavendeploy.yml
                 kubectl apply -f ingress.yml
