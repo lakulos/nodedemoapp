@@ -17,12 +17,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
                   
-      - name: Azure Container Registry Login
-        uses: Azure/docker-login@v1
-        with:
-            username: ${{ secrets.ACR_USERNAME }}
-            password: ${{ secrets.ACR_PASS }}
-            login-server: ${{ secrets.ACR_USERNAME }}.azurecr.io
 
       - name: build_image
         run: |
